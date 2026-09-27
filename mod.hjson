@@ -1,0 +1,8 @@
+name: "Tool Assisted Speedrun (TAS)"
+displayName: "Mindustry TAS"
+author: Rovstam
+description: "This mod is for doing Tool Assisted Speedruns."
+version: "1.0"
+minGameVersion: "160.5"
+dependencies: [ ]
+hidden: false
