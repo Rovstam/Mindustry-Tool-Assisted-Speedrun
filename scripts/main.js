@@ -86,14 +86,41 @@ function deleteTasSave(file) {
     if (file.exists()) file.delete();
 }
 
+function sanitizeTasSaveName(value) {
+    let cleaned = String(value || "").trim();
+    if (!cleaned) return "";
+
+    cleaned = cleaned.replace(/[\\/]+/g, " ");
+    cleaned = cleaned.replace(/\.\./g, "");
+    cleaned = cleaned.replace(/^[.]+|[.]+$/g, "");
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+    if (!cleaned || cleaned === "." || cleaned === "..") return "";
+    return cleaned;
+}
+
 function renameTasSave(file, newName) {
     if (!file || !newName) return;
-    let cleaned = newName.trim();
-    if (!cleaned) return;
 
-    let targetFile = tasSavesFolder.child(cleaned + ".msav");
+    let sanitizedName = sanitizeTasSaveName(newName);
+    if (!sanitizedName) {
+        print("Invalid TAS save name. Please use a name without path separators or traversal.");
+        return;
+    }
+
+    let targetFile = tasSavesFolder.child(sanitizedName + ".msav");
     if (targetFile.exists() && !targetFile.equals(file)) {
         print("A TAS save with that name already exists.");
+        return;
+    }
+
+    // Ensure the final path remains inside the TAS saves directory.
+    let targetPath = targetFile.absolutePath();
+    let savesPath = tasSavesFolder.absolutePath();
+    let normalizedTarget = targetPath.replace(/\\/g, "/");
+    let normalizedSaves = savesPath.replace(/\\/g, "/");
+    if (!normalizedTarget.startsWith(normalizedSaves + "/") && normalizedTarget !== normalizedSaves) {
+        print("Invalid TAS save name. The save could not be renamed safely.");
         return;
     }
 
