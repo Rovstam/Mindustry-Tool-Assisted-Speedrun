@@ -199,6 +199,12 @@ function buildTasCard(save, dialog, onRefresh) {
                     onRefresh();
                 });
             }).right();
+            opts.button(Icon.trash, Styles.emptyi, () => {
+                Vars.ui.showConfirm("Delete TAS Save", "Are you sure you want to delete this TAS save?", () => {
+                    deleteTasSave(save);
+                    onRefresh();
+                });
+            });
         })).padRight(-10).growX();
     })).growX().colspan(2);
     button.row();
