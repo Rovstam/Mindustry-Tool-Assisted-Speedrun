@@ -100,43 +100,39 @@ function sanitizeTasSaveName(value) {
 }
 
 function renameTasSave(file, newName) {
-    if (!file || !newName) return;
+    if (!file || !file.exists() || !newName) return false;
 
-    let sanitizedName = sanitizeTasSaveName(newName);
-    if (!sanitizedName) {
-        print("Invalid TAS save name. Please use a name without path separators or traversal.");
-        return;
+    let cleaned = newName.trim();
+    if (!cleaned) return false;
+
+    // Remove .msav if the user typed it manually.
+    if (cleaned.toLowerCase().endsWith(".msav")) {
+        cleaned = cleaned.substring(0, cleaned.length - 5).trim();
     }
 
-    let targetFile = tasSavesFolder.child(sanitizedName + ".msav");
-    if (targetFile.exists() && !targetFile.equals(file)) {
+    let targetFile = tasSavesFolder.child(cleaned + ".msav");
+
+    // Same name = nothing to do.
+    if (targetFile.equals(file)) return true;
+
+    // Don't overwrite another TAS save.
+    if (targetFile.exists()) {
         print("A TAS save with that name already exists.");
-        return;
+        return false;
     }
 
-    // Ensure the final path remains inside the TAS saves directory.
-    let targetPath = targetFile.absolutePath();
-    let savesPath = tasSavesFolder.absolutePath();
-    let normalizedTarget = targetPath.replace(/\\/g, "/");
-    let normalizedSaves = savesPath.replace(/\\/g, "/");
-    if (!normalizedTarget.startsWith(normalizedSaves + "/") && normalizedTarget !== normalizedSaves) {
-        print("Invalid TAS save name. The save could not be renamed safely.");
-        return;
-    }
-
-    let metadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
-    let metadata = metadataFile.exists() ? JSON.parse(metadataFile.readString()) : null;
-
-    if (file.exists()) {
+    try {
         file.moveTo(targetFile);
-    }
 
-    if (metadata) {
-        metadata.tasName = targetFile.name();
-        metadata.tasPath = targetFile.absolutePath();
-        let newMetadataFile = tasMetadataFolder.child(targetFile.nameWithoutExtension() + ".json");
-        newMetadataFile.writeString(JSON.stringify(metadata, null, 2), false);
-        if (metadataFile.exists() && !metadataFile.equals(newMetadataFile)) metadataFile.delete();
+        if (!targetFile.exists()) {
+            print("Failed to rename TAS save.");
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        print("Failed to rename TAS save: " + error);
+        return false;
     }
 }
 
