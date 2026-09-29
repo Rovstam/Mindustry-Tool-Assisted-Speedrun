@@ -192,12 +192,13 @@ function buildImportCard(saveSlot, importer, onDone) {
     button.row();
 
     let previewRegion = saveSlot.previewTexture();
+    if (previewRegion == null) previewRegion = Core.atlas.find("nomap");
     let previewImage = new BorderImage(previewRegion, 4);
     previewImage.update(() => {
-        let currentRegion = saveSlot.previewTexture();
-        if (currentRegion !== previewRegion) {
-            previewRegion = currentRegion;
-            previewImage.setDrawable(currentRegion);
+        let currentTexture = saveSlot.previewTexture();
+        if (currentTexture != null && currentTexture !== previewRegion) {
+            previewRegion = currentTexture;
+            previewImage.setDrawable(new TextureRegion(currentTexture));
         }
     });
     button.left().add(previewImage).size(160, 120).padRight(6);
