@@ -65,6 +65,11 @@ function copySaveToTasFolder(sourceSlot) {
 
     sourceSlot.exportFile(targetFile);
 
+    let sourcePreviewFile = Vars.mapPreviewDirectory.child("save_slot_" + sourceFile.nameWithoutExtension() + ".png");
+    let targetPreviewFile = tasMetadataFolder.child(targetFile.nameWithoutExtension() + ".png");
+    if (targetPreviewFile.exists()) targetPreviewFile.delete();
+    if (sourcePreviewFile.exists()) sourcePreviewFile.copyTo(targetPreviewFile);
+
     let metadata = {
         version: 1,
         sourceName: sourceFile.name(),
@@ -84,7 +89,9 @@ function deleteTasSave(file) {
     if (!file) return;
 
     let metadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
+    let previewFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".png");
     if (metadataFile.exists()) metadataFile.delete();
+    if (previewFile.exists()) previewFile.delete();
     if (file.exists()) file.delete();
 }
 
@@ -132,6 +139,8 @@ function renameTasSave(file, newName) {
         }
 
         let oldMetadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
+        let oldPreviewFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".png");
+        let newPreviewFile = tasMetadataFolder.child(targetFile.nameWithoutExtension() + ".png");
         let metadata = {};
         if (oldMetadataFile.exists()) {
             try {
@@ -147,6 +156,8 @@ function renameTasSave(file, newName) {
         tasMetadataFolder.child(targetFile.nameWithoutExtension() + ".json")
             .writeString(JSON.stringify(metadata, null, 2), false);
         if (oldMetadataFile.exists()) oldMetadataFile.delete();
+        if (newPreviewFile.exists()) newPreviewFile.delete();
+        if (oldPreviewFile.exists()) oldPreviewFile.moveTo(newPreviewFile);
 
         return true;
     } catch (error) {
@@ -249,7 +260,17 @@ function buildTasCard(save, dialog, onRefresh) {
     })).growX().colspan(2);
     button.row();
 
-    button.left().add(new BorderImage(Core.atlas.find("nomap"), 4)).size(160, 120).padRight(6);
+    let previewFile = tasMetadataFolder.child(save.nameWithoutExtension() + ".png");
+    let previewImage = new BorderImage(Core.atlas.find("nomap"), 4);
+    if (previewFile.exists()) {
+        try {
+            let previewTexture = new Texture(previewFile);
+            previewImage = new BorderImage(previewTexture, 4);
+        } catch (error) {
+            print("Failed to load TAS preview: " + error);
+        }
+    }
+    button.left().add(previewImage).size(160, 120).padRight(6);
     button.table(cons(meta => {
         meta.left().top();
         meta.defaults().padBottom(-2).left().width(260);
