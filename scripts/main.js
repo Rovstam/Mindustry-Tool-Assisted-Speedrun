@@ -49,9 +49,10 @@ function addSnapshotKeyOption(table, setting, otherSetting, label) {
     table.row();
 }
 
-function copySaveToTasFolder(sourceFile) {
+function copySaveToTasFolder(sourceSlot) {
     ensureTasFolders();
 
+    let sourceFile = sourceSlot.file;
     let baseName = sourceFile.nameWithoutExtension();
     let targetName = baseName + "-tas.msav";
     let targetFile = tasSavesFolder.child(targetName);
@@ -62,7 +63,7 @@ function copySaveToTasFolder(sourceFile) {
         counter++;
     }
 
-    sourceFile.copyTo(targetFile);
+    sourceSlot.exportFile(targetFile);
 
     let metadata = {
         version: 1,
@@ -70,6 +71,7 @@ function copySaveToTasFolder(sourceFile) {
         sourcePath: sourceFile.absolutePath(),
         tasName: targetFile.name(),
         tasPath: targetFile.absolutePath(),
+        tasDisplayName: sourceSlot.getName(),
         createdAt: new Date().toISOString()
     };
 
@@ -129,6 +131,23 @@ function renameTasSave(file, newName) {
             return false;
         }
 
+        let oldMetadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
+        let metadata = {};
+        if (oldMetadataFile.exists()) {
+            try {
+                metadata = JSON.parse(oldMetadataFile.readString());
+            } catch (error) {
+                metadata = {};
+            }
+        }
+        metadata.version = metadata.version || 1;
+        metadata.tasDisplayName = cleaned;
+        metadata.tasName = targetFile.name();
+        metadata.tasPath = targetFile.absolutePath();
+        tasMetadataFolder.child(targetFile.nameWithoutExtension() + ".json")
+            .writeString(JSON.stringify(metadata, null, 2), false);
+        if (oldMetadataFile.exists()) oldMetadataFile.delete();
+
         return true;
     } catch (error) {
         print("Failed to rename TAS save: " + error);
@@ -138,12 +157,23 @@ function renameTasSave(file, newName) {
 
 function displayNameFor(file) {
     if (!file) return "Untitled";
+
+    let metadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
+    if (metadataFile.exists()) {
+        try {
+            let metadata = JSON.parse(metadataFile.readString());
+            if (metadata.tasDisplayName) return metadata.tasDisplayName;
+        } catch (error) {
+            // Fall back to the save filename when metadata is missing or invalid.
+        }
+    }
+
     let name = file.nameWithoutExtension();
     if (!name || name.length === 0) return "Untitled";
     return name;
 }
 
-function buildImportCard(save, importer, onDone) {
+function buildImportCard(saveSlot, importer, onDone) {
     let card = new Table();
     card.defaults().left().pad(4);
 
@@ -153,7 +183,7 @@ function buildImportCard(save, importer, onDone) {
     button.defaults().left();
     button.left();
     button.table(cons(title => {
-        title.add("[accent]" + displayNameFor(save)).left().growX().width(220).wrap();
+        title.add("[accent]" + saveSlot.getName()).left().growX().width(220).wrap();
         title.table(cons(opts => {
             opts.right();
             opts.defaults().size(38);
@@ -161,12 +191,21 @@ function buildImportCard(save, importer, onDone) {
     })).growX().colspan(2);
     button.row();
 
-    button.left().add(new BorderImage(Core.atlas.find("nomap"), 4)).size(160, 120).padRight(6);
+    let previewRegion = saveSlot.previewTexture();
+    let previewImage = new BorderImage(previewRegion, 4);
+    previewImage.update(() => {
+        let currentRegion = saveSlot.previewTexture();
+        if (currentRegion !== previewRegion) {
+            previewRegion = currentRegion;
+            previewImage.setDrawable(currentRegion);
+        }
+    });
+    button.left().add(previewImage).size(160, 120).padRight(6);
     button.table(cons(meta => {
         meta.left().top();
         meta.defaults().padBottom(-2).left().width(260);
         meta.row();
-        meta.labelWrap("Map: " + (save.name().includes("backup") ? "Backup copy" : "Save slot"));
+        meta.labelWrap("Map: " + (saveSlot.file.name().includes("backup") ? "Backup copy" : "Save slot"));
         meta.row();
         meta.labelWrap("Autosave: On");
         meta.row();
@@ -174,7 +213,7 @@ function buildImportCard(save, importer, onDone) {
     })).left().growX().width(260);
 
     button.clicked(() => {
-        let tasCopy = copySaveToTasFolder(save);
+        let tasCopy = copySaveToTasFolder(saveSlot);
         print("Imported TAS copy: " + tasCopy.absolutePath());
         importer.hide();
         onDone();
@@ -245,13 +284,13 @@ function showTasImportDialog() {
     let content = new Table();
     content.defaults().pad(10);
 
-    let saveFiles = listSaveFiles(Vars.saveDirectory);
-    if (saveFiles.length === 0) {
+    let saveSlots = Vars.control.saves.getSaveSlots();
+    if (!saveSlots || saveSlots.size === 0) {
         content.add("No saves found in the Load Game folder.").color(Color.lightGray).row();
     } else {
-        for (let i = 0; i < saveFiles.length; i++) {
-            let save = saveFiles[i];
-            let card = buildImportCard(save, importer, () => openToolAssistedSpeedrunMenu());
+        for (let i = 0; i < saveSlots.size; i++) {
+            let saveSlot = saveSlots.get(i);
+            let card = buildImportCard(saveSlot, importer, () => openToolAssistedSpeedrunMenu());
             content.add(card).uniformX().fillX().pad(4).padRight(8).margin(10);
             if ((i + 1) % 3 === 0) content.row();
         }
