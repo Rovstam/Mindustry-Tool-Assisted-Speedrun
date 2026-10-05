@@ -1,8 +1,6 @@
 "use strict";
 
 const tasSaveStore = require("tas-saves");
-const tasSavesFolder = tasSaveStore.tasSavesFolder;
-const tasMetadataFolder = tasSaveStore.tasMetadataFolder;
 
 let stepping = false;
 let snapshotFile = Vars.dataDirectory.child("tas-snapshot.msav");
@@ -10,13 +8,6 @@ let snapshotKeys = ["f2", "f3", "f4", "f7", "f10"];
 
 Core.settings.defaults("tas-save-key", "f10");
 Core.settings.defaults("tas-load-key", "f7");
-
-function listSaveFiles(dir) {
-    if (!dir || !dir.exists()) return [];
-    let files = dir.list();
-    if (!files) return [];
-    return files.filter(file => file.extension().toLowerCase() === "msav" || file.extension().toLowerCase() === "sav");
-}
 
 function addSnapshotKeyOption(table, setting, otherSetting, label) {
     let button;
@@ -84,10 +75,14 @@ function buildImportCard(saveSlot, importer, onDone) {
     })).left().growX().width(260);
 
     button.clicked(() => {
-        let tasCopy = tasSaveStore.copySaveToTasFolder(saveSlot);
-        print("Imported TAS copy: " + tasCopy.absolutePath());
-        importer.hide();
-        onDone();
+        try {
+            let tasCopy = tasSaveStore.copySaveToTasFolder(saveSlot);
+            print("Imported TAS copy: " + tasCopy.absolutePath());
+            importer.hide();
+            onDone();
+        } catch (error) {
+            Vars.ui.showErrorMessage("Failed to import TAS save: " + error);
+        }
     });
 
     return button;
@@ -118,7 +113,7 @@ function buildTasCard(save, dialog, onRefresh) {
     })).growX().colspan(2);
     button.row();
 
-    let previewFile = tasMetadataFolder.child(save.nameWithoutExtension() + ".png");
+    let previewFile = tasSaveStore.previewFileFor(save);
     let previewImage = new BorderImage(Core.atlas.find("nomap"), 4);
     if (previewFile.exists()) {
         try {
@@ -202,7 +197,7 @@ function openToolAssistedSpeedrunMenu() {
         dialog.cont.clear();
         dialog.cont.defaults().pad(6).left();
 
-        let tasSaves = listSaveFiles(tasSavesFolder);
+        let tasSaves = tasSaveStore.listTasSaves();
         let list = new Table();
         list.defaults().pad(10).left();
 
