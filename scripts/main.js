@@ -3,11 +3,32 @@
 const tasSaveStore = require("tas-saves");
 
 let stepping = false;
+let inTasSession = false;
 let snapshotFile = Vars.dataDirectory.child("tas-snapshot.msav");
 let snapshotKeys = ["f2", "f3", "f4", "f7", "f10"];
+let tasControlPanel;
+let tasPanelContent;
+let tasPanelControlSignature;
+let tasPanelScale;
+let tasPanelOpacity;
+
+const tasPanelSettings = {
+    pause: "tas-panel-show-pause",
+    step: "tas-panel-show-step",
+    save: "tas-panel-show-save",
+    load: "tas-panel-show-load",
+    scale: "tas-panel-scale",
+    opacity: "tas-panel-opacity"
+};
 
 Core.settings.defaults("tas-save-key", "f10");
 Core.settings.defaults("tas-load-key", "f7");
+Core.settings.defaults(tasPanelSettings.pause, true);
+Core.settings.defaults(tasPanelSettings.step, true);
+Core.settings.defaults(tasPanelSettings.save, true);
+Core.settings.defaults(tasPanelSettings.load, true);
+Core.settings.defaults(tasPanelSettings.scale, 100);
+Core.settings.defaults(tasPanelSettings.opacity, 100);
 
 function addSnapshotKeyOption(table, setting, otherSetting, label) {
     let button;
@@ -32,6 +53,159 @@ function addSnapshotKeyOption(table, setting, otherSetting, label) {
 
     updateLabel();
     table.row();
+}
+
+function tasPanelControlsEnabled() {
+    return [
+        Core.settings.getBool(tasPanelSettings.pause),
+        Core.settings.getBool(tasPanelSettings.step),
+        Core.settings.getBool(tasPanelSettings.save),
+        Core.settings.getBool(tasPanelSettings.load)
+    ];
+}
+
+function rebuildTasPanelContent() {
+    tasPanelContent.clearChildren();
+    tasPanelContent.defaults().size(158, 42).pad(3);
+
+    let controls = tasPanelControlsEnabled();
+    let count = 0;
+    let addControl = (enabled, label, action) => {
+        if (!enabled) return;
+        tasPanelContent.button(label, action);
+        count++;
+        if (count % 2 === 0) tasPanelContent.row();
+    };
+
+    addControl(controls[0], "Pause / Resume", toggleTasPause);
+    addControl(controls[1], "Step One Tick", stepTasOneTick);
+    addControl(controls[2], "Save Snapshot", saveTasSnapshot);
+    addControl(controls[3], "Load Snapshot", loadTasSnapshot);
+
+    tasPanelControlSignature = controls.join(":");
+}
+
+function clampTasPanelPosition() {
+    if (!tasControlPanel) return;
+
+    let scale = tasPanelScale || 1;
+    let maxX = Math.max(0, Core.graphics.getWidth() - tasControlPanel.getWidth() * scale);
+    let maxY = Math.max(0, Core.graphics.getHeight() - tasControlPanel.getHeight() * scale);
+    let x = Math.max(0, Math.min(tasControlPanel.getX(Align.bottomLeft), maxX));
+    let y = Math.max(0, Math.min(tasControlPanel.getY(Align.bottomLeft), maxY));
+    tasControlPanel.setPosition(x, y);
+}
+
+function refreshTasControlPanel() {
+    if (!tasControlPanel) return;
+
+    tasControlPanel.visible = inTasSession;
+
+    let controls = tasPanelControlsEnabled();
+    let controlSignature = controls.join(":");
+    if (controlSignature !== tasPanelControlSignature) rebuildTasPanelContent();
+
+    let scale = Core.settings.getInt(tasPanelSettings.scale) / 100;
+    if (scale !== tasPanelScale) {
+        tasPanelScale = scale;
+        tasControlPanel.setScale(scale);
+        clampTasPanelPosition();
+    }
+
+    let opacity = Core.settings.getInt(tasPanelSettings.opacity) / 100;
+    if (opacity !== tasPanelOpacity) {
+        tasPanelOpacity = opacity;
+        tasControlPanel.setColor(1, 1, 1, opacity);
+    }
+}
+
+function openTasSettings() {
+    let settings = Vars.ui.settings;
+    settings.show();
+
+    Core.app.post(() => {
+        let categories = settings.getCategories();
+        let tasCategory = null;
+        for (let i = 0; i < categories.size; i++) {
+            let category = categories.get(i);
+            if (category.name === "Tool Assisted Speedrun") {
+                tasCategory = category;
+                break;
+            }
+        }
+        if (!tasCategory) return;
+
+        let settingsChildren = settings.cont.getChildren();
+        if (settingsChildren.size === 0) return;
+        let preferences = settingsChildren.get(0).getWidget();
+        preferences.clearChildren();
+        preferences.add(tasCategory.table);
+    });
+}
+
+function createTasControlPanel() {
+    tasControlPanel = new Table(Tex.pane);
+    tasControlPanel.setSize(340, 158);
+    tasControlPanel.setTransform(true);
+    tasControlPanel.setOrigin(Align.bottomLeft);
+    tasControlPanel.defaults().pad(5);
+
+    let titleBar = new Table(Styles.grayPanel);
+    titleBar.defaults().height(36).pad(3);
+    let titleLabel = titleBar.add("TAS Controls").growX().left().get();
+    titleBar.button(Icon.settings, Styles.defaulti, openTasSettings).size(40);
+    let moveButton = titleBar.button("Move", Styles.grayt, () => {}).size(72, 34).get();
+    moveButton.addListener(new JavaAdapter(DragListener, {
+        drag: function(event, x, y) {
+            tasControlPanel.moveBy(-this.getDeltaX(), -this.getDeltaY());
+            clampTasPanelPosition();
+        }
+    }));
+
+    tasPanelContent = new Table();
+    tasPanelContent.background(Styles.black8);
+    tasControlPanel.add(titleBar).growX().height(36).row();
+    tasControlPanel.add(tasPanelContent).grow().pad(5);
+    tasControlPanel.update(() => refreshTasControlPanel());
+    Vars.ui.hudGroup.addChild(tasControlPanel);
+    tasControlPanel.setPosition(12, 12, Align.bottomLeft);
+    refreshTasControlPanel();
+}
+
+function toggleTasPause() {
+    if (!Vars.state.isGame() || Vars.net.active()) return;
+    Vars.state.set(Vars.state.isPaused() ? GameState.State.playing : GameState.State.paused);
+}
+
+function stepTasOneTick() {
+    if (!Vars.state.isGame() || Vars.net.active() || !Vars.state.isPaused()) return;
+    stepping = true;
+    Vars.state.set(GameState.State.playing);
+}
+
+function saveTasSnapshot() {
+    if (!Vars.state.isGame() || Vars.net.active() || !Vars.state.isPaused()) return;
+    try {
+        SaveIO.save(snapshotFile);
+        print("TAS snapshot saved: " + snapshotFile.absolutePath());
+    } catch (error) {
+        print("TAS snapshot save failed: " + error);
+    }
+}
+
+function loadTasSnapshot() {
+    if (!Vars.state.isGame() || Vars.net.active() || !Vars.state.isPaused()) return;
+    if (!snapshotFile.exists()) {
+        print("No TAS snapshot found to load.");
+        return;
+    }
+    try {
+        SaveIO.load(snapshotFile);
+        Vars.state.set(GameState.State.paused);
+        print("TAS snapshot loaded.");
+    } catch (error) {
+        print("TAS snapshot load failed: " + error);
+    }
 }
 
 function buildImportCard(saveSlot, importer, onDone) {
@@ -140,6 +314,7 @@ function buildTasCard(save, dialog, onRefresh) {
 
         try {
             SaveIO.load(save);
+            inTasSession = true;
             Vars.state.set(GameState.State.paused);
             print("Loaded TAS save: " + save.absolutePath());
             dialog.hide();
@@ -232,49 +407,44 @@ Events.on(ClientLoadEvent, () => {
     Vars.ui.settings.addCategory("Tool Assisted Speedrun", cons(table => {
         addSnapshotKeyOption(table, "tas-save-key", "tas-load-key", "Save Snapshot Key");
         addSnapshotKeyOption(table, "tas-load-key", "tas-save-key", "Load Snapshot Key");
+        table.checkPref(tasPanelSettings.pause, true);
+        table.checkPref(tasPanelSettings.step, true);
+        table.checkPref(tasPanelSettings.save, true);
+        table.checkPref(tasPanelSettings.load, true);
+        table.sliderPref(tasPanelSettings.scale, 100, 50, 150, 10, value => value + "%");
+        table.sliderPref(tasPanelSettings.opacity, 100, 20, 100, 10, value => value + "%");
     }));
 
     Vars.ui.menufrag.addButton("Tool Assisted Speedrun", () => {
         openToolAssistedSpeedrunMenu();
     });
+
+    createTasControlPanel();
 });
 
 Events.run(Trigger.update, () => {
+    if (!Vars.state.isGame()) inTasSession = false;
+    refreshTasControlPanel();
+
     if (!Vars.state.isGame() || Vars.net.active()) return;
 
     if (Vars.state.isPaused() && Core.input.keyTap(KeyCode.valueOf(Core.settings.getString("tas-save-key")))) {
-        try {
-            SaveIO.save(snapshotFile);
-            print("TAS snapshot saved: " + snapshotFile.absolutePath());
-        } catch (error) {
-            print("TAS snapshot save failed: " + error);
-        }
+        saveTasSnapshot();
         return;
     }
 
     if (Vars.state.isPaused() && Core.input.keyTap(KeyCode.valueOf(Core.settings.getString("tas-load-key")))) {
-        if (!snapshotFile.exists()) {
-            print("No TAS snapshot found to load.");
-            return;
-        }
-        try {
-            SaveIO.load(snapshotFile);
-            Vars.state.set(GameState.State.paused);
-            print("TAS snapshot loaded.");
-        } catch (error) {
-            print("TAS snapshot load failed: " + error);
-        }
+        loadTasSnapshot();
         return;
     }
 
     if (Core.input.keyTap(KeyCode.f8)) {
-        Vars.state.set(Vars.state.isPaused() ? GameState.State.playing : GameState.State.paused);
+        toggleTasPause();
         return;
     }
 
     if (Vars.state.isPaused() && Core.input.keyTap(KeyCode.f9)) {
-        stepping = true;
-        Vars.state.set(GameState.State.playing);
+        stepTasOneTick();
     }
 });
 
