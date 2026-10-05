@@ -83,10 +83,10 @@ function renameTasSave(file, newName) {
     let targetFile = tasSavesFolder.child(cleaned + ".msav");
 
     // Same name = nothing to do.
-    if (targetFile.equals(file)) return true;
+    if (file.nameWithoutExtension() === cleaned) return true;
 
     // Don't overwrite another TAS save.
-    if (targetFile.exists()) {
+    if (targetFile.exists() && !targetFile.equals(file)) {
         print("A TAS save with that name already exists.");
         return false;
     }
