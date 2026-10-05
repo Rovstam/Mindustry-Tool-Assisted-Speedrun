@@ -105,14 +105,13 @@ function buildTasCard(save, dialog, onRefresh) {
             opts.defaults().size(38);
             opts.button(Icon.pencil, Styles.emptyi, () => {
                 Vars.ui.showTextInput("Rename TAS Save", "New name", 30, tasSaveStore.displayNameFor(save), newName => {
-                    tasSaveStore.renameTasSave(save, newName);
-                    onRefresh();
+                    let renamed = tasSaveStore.renameTasSave(save, newName);
+                    if (renamed) onRefresh();
                 });
             }).right();
             opts.button(Icon.trash, Styles.emptyi, () => {
                 Vars.ui.showConfirm("Delete TAS Save", "Are you sure you want to delete this TAS save?", () => {
-                    tasSaveStore.deleteTasSave(save);
-                    onRefresh();
+                    if (tasSaveStore.deleteTasSave(save)) onRefresh();
                 });
             });
         })).padRight(-10).growX();
@@ -142,6 +141,8 @@ function buildTasCard(save, dialog, onRefresh) {
     })).left().growX().width(260);
 
     button.clicked(() => {
+        if (button.childrenPressed()) return;
+
         try {
             SaveIO.load(save);
             Vars.state.set(GameState.State.paused);

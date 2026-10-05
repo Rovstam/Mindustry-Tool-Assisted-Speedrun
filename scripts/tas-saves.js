@@ -47,37 +47,79 @@ function copySaveToTasFolder(sourceSlot) {
 }
 
 function deleteTasSave(file) {
-    if (!file) return;
+    if (!file) return false;
+
+    try {
+        if (file.exists() && !file.delete()) {
+            Vars.ui.showErrorMessage("Failed to delete TAS save.");
+            return false;
+        }
+    } catch (error) {
+        Vars.ui.showErrorMessage("Failed to delete TAS save: " + error);
+        return false;
+    }
 
     let metadataFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".json");
     let previewFile = tasMetadataFolder.child(file.nameWithoutExtension() + ".png");
-    if (metadataFile.exists()) metadataFile.delete();
-    if (previewFile.exists()) previewFile.delete();
-    if (file.exists()) file.delete();
+    let cleanupFailed = false;
+    for (let sidecar of [metadataFile, previewFile]) {
+        if (!sidecar.exists()) continue;
+        try {
+            if (!sidecar.delete()) cleanupFailed = true;
+        } catch (error) {
+            cleanupFailed = true;
+        }
+    }
+    if (cleanupFailed) {
+        Vars.ui.showErrorMessage("TAS save deleted, but some metadata could not be removed.");
+    }
+    return true;
 }
 
 function sanitizeTasSaveName(value) {
-    let cleaned = String(value || "").trim();
-    if (!cleaned) return "";
+    let input = String(value || "");
+    let cleaned = "";
+    let previousWasSpace = false;
 
-    cleaned = cleaned.replace(/[\\/]+/g, " ");
-    cleaned = cleaned.replace(/\.\./g, "");
-    cleaned = cleaned.replace(/^[.]+|[.]+$/g, "");
-    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    for (let index = 0; index < input.length; index++) {
+        let character = input.charAt(index);
+        let code = input.charCodeAt(index);
+        let allowed = (code >= 65 && code <= 90)
+            || (code >= 97 && code <= 122)
+            || (code >= 48 && code <= 57)
+            || code === 32
+            || code === 45
+            || code === 95
+            || code === 40
+            || code === 41;
 
-    if (!cleaned || cleaned === "." || cleaned === "..") return "";
-    return cleaned;
+        if (!allowed) continue;
+        if (code === 32) {
+            if (!previousWasSpace) cleaned += character;
+            previousWasSpace = true;
+        } else {
+            cleaned += character;
+            previousWasSpace = false;
+        }
+    }
+
+    return cleaned.trim();
 }
 
 function renameTasSave(file, newName) {
-    if (!file || !file.exists() || !newName) return false;
+    if (!file || !file.exists()) return false;
 
-    let cleaned = newName.trim();
-    if (!cleaned) return false;
+    let cleaned = String(newName || "").trim();
 
     // Remove .msav if the user typed it manually.
     if (cleaned.toLowerCase().endsWith(".msav")) {
         cleaned = cleaned.substring(0, cleaned.length - 5).trim();
+    }
+
+    cleaned = sanitizeTasSaveName(cleaned);
+    if (!cleaned) {
+        Vars.ui.showErrorMessage("Invalid save name. Please enter a name.");
+        return false;
     }
 
     let targetFile = tasSavesFolder.child(cleaned + ".msav");
@@ -87,7 +129,7 @@ function renameTasSave(file, newName) {
 
     // Don't overwrite another TAS save.
     if (targetFile.exists() && !targetFile.equals(file)) {
-        print("A TAS save with that name already exists.");
+        Vars.ui.showErrorMessage("A TAS save with that name already exists.");
         return false;
     }
 
@@ -95,7 +137,7 @@ function renameTasSave(file, newName) {
         file.moveTo(targetFile);
 
         if (!targetFile.exists()) {
-            print("Failed to rename TAS save.");
+            Vars.ui.showErrorMessage("Failed to rename TAS save.");
             return false;
         }
 
@@ -122,7 +164,7 @@ function renameTasSave(file, newName) {
 
         return true;
     } catch (error) {
-        print("Failed to rename TAS save: " + error);
+        Vars.ui.showErrorMessage("Failed to rename TAS save: " + error);
         return false;
     }
 }
