@@ -173,6 +173,13 @@ function listTasSaves() {
             saves.push(entry);
         }
     }
+
+    saves.sort((a, b) => {
+        let left = String(displayNameFor(a) || "").toLowerCase();
+        let right = String(displayNameFor(b) || "").toLowerCase();
+        return left.localeCompare(right);
+    });
+
     return saves;
 }
 
