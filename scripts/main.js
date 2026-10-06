@@ -135,9 +135,16 @@ function openTasSettings() {
         }
         if (!tasCategory) return;
 
-        let settingsChildren = settings.cont.getChildren();
-        if (settingsChildren.size === 0) return;
-        let preferences = settingsChildren.get(0).getWidget();
+        let settingsChildren = settings.getChildren();
+        let preferences = null;
+        for (let i = 0; i < settingsChildren.size; i++) {
+            let child = settingsChildren.get(i);
+            if (child instanceof ScrollPane) {
+                preferences = child.getWidget();
+                break;
+            }
+        }
+        if (!preferences) return;
         preferences.clearChildren();
         preferences.add(tasCategory.table);
     });
@@ -157,6 +164,7 @@ function createTasControlPanel() {
     let moveButton = titleBar.button("Move", Styles.grayt, () => {}).size(72, 34).get();
     moveButton.addListener(new JavaAdapter(DragListener, {
         drag: function(event, x, y) {
+            print("TAS Move drag delta: " + this.getDeltaX() + ", " + this.getDeltaY());
             tasControlPanel.moveBy(-this.getDeltaX(), -this.getDeltaY());
             clampTasPanelPosition();
         }
