@@ -2,7 +2,20 @@
 
 Plan: TAS Window and Replay Lifecycle
 Keep the existing project and branch folders. Replace the fragile panel/settings plumbing with a standalone window inspired by MI2, then make savestates and player inputs share one project/branch/frame lifecycle.
-Steps
+
+## Current status (code inspection: 2026-10-11)
+
+| Step | Status | Evidence |
+|---|---|---|
+| 1. Frame and input contract | Not started | `main.js` uses `Trigger.afterGameUpdate` to finish one-tick stepping, but no TAS frame counter, game-consumed input contract, or replay input model exists. |
+| 2. Standalone control window | Prototype exists; planned work remains | `main.js` creates a draggable HUD `Table` with pause, step, and global snapshot buttons. Its position is reset on creation, dragging uses `DragListener`, and the gear redirects `Vars.ui.settings`; this is not the planned standalone window or TAS-owned options dialog. |
+| 3. Session and checkpoint ownership | Folder scaffolding only | `tas-saves.js` creates `branches/main/savestates/`, `branch.json`, and an empty `inputs.json`. The active TAS session still uses `inTasSession`, and snapshots still use the global `tas-snapshot.msav`; no frame/cursor metadata or branch-owned checkpoint flow exists. |
+| 4. Branch-aware input record/replay | Not started | No code records or injects inputs, advances a replay cursor, creates child branches, or resolves inherited input history. |
+| 5. End-to-end Mindustry 160.5 verification | Not started | The planned in-game scenarios have not been run or documented. |
+
+These statuses reflect source inspection only, not runtime verification. Update them when implementation or test evidence changes.
+
+## Steps
 
 1. Define the frame and input contract. Before building replay storage, prove where Mindustry 160.5 accepts simulation-consumed input before a game update. Use one completed afterGameUpdate as the frame clock. Define held controls separately from ordered one-shot actions; don’t use raw key events or UI clicks as the replay format.
 2. Build the standalone window. Replace the direct HUD table with a focused window component. Adapt MI2 Mindow2’s InputListener approach: capture touch-down, convert dragged coordinates to the parent space, clamp on release, and persist position in Core.settings. Keep panel preferences separate from route data. The gear should open a TAS-owned options dialog instead of modifying Vars.ui.settings internals. This phase can proceed alongside session design once the window/session interface is agreed.
